@@ -1,0 +1,25 @@
+{
+  "name": "mas",
+  "displayName": "maS",
+  "description": "Support for maS.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "mas",
+      "aliases": ["maS", "mas"],
+      "extensions": [".mas",".maS"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "mas",
+      "scopeName": "source.maS",
+      "path": "./syntaxes/mas.tmLanguage.json"
+    }]
+  }
+}
