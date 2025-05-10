@@ -1,0 +1,86 @@
+
+namespace term {
+    func native_palette_color(color: Num) -> Num {
+        lua { return term.nativePaletteColor(std__term__color) }
+    }
+
+    func write(text: Str) {
+        lua { term.write(std__term__text) }
+    }
+
+    func scroll(y: Num) {
+        lua { term.scroll(std__term__y) }
+    }
+
+    func get_cursor_pos() -> Any {
+        lua { return term.getCursorPos() }
+    }
+
+    func get_cursor_blink() -> Bool {
+        lua { return term.getCursorBlink() }
+    }
+
+    func set_cursor_blink(blink: Bool) {
+        lua { term.setCursorBlink(std__term__blink) }
+    }
+
+    func get_size() -> Any {
+        lua { return term.get_size() }
+    }
+
+    func clear() {
+        lua { term.clear() }
+    }
+
+    func clear_line() {
+        lua { term.clearLine() }
+    }
+
+    func get_text_color() -> Num {
+        lua { return term.getTextColor() }
+    }
+
+    func set_text_color(color: Num) {
+        lua { term.setTextColor(std__term__color) }
+    }
+
+    func get_background_color() -> Num {
+        lua { return term.getBackgroundColor() }
+    }
+
+    func set_background_color(color: Num) {
+        lua { term.setBackgroundColor(std__term__color) }
+    }
+
+    func is_color() -> Bool {
+        lua { return term.isColor() }
+    }
+
+    func blit(text: Str, text_color: Num, background_color: Num) {
+        lua { term.blit(std__term__text, std__term__text_color, std__term__background_color) }
+    }
+
+    func set_palette_color(color: Num, value: Num) {
+        lua { term.setPaletteColor(std__term__color, std__term__value) }
+    }
+
+    func set_palette_color_channels(color: Num, r: Num, g: Num, b: Num) {
+        lua { term.setPaletteColor(std__term__color, std__term__r, std__term__g, std__term__b) }
+    }
+
+    func get_palette_color(color: Num) -> Num {
+        lua { return term.getPaletteColor(std__term__color) }
+    }
+
+    func redirect(target: Table) {
+        lua { term.redirect(std__term__target) }
+    }
+
+    func current() -> Table {
+        lua { return term.current() }
+    }
+
+    func native() -> Table {
+        lua { return term.native() }
+    }
+}

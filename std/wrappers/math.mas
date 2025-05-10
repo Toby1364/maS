@@ -1,0 +1,64 @@
+namespace math {
+    let pi: Num = 3.14159;
+
+    func abs(x: Num) -> Num {
+        lua { return math.abs(std__math__x) }
+    }
+
+    func ceil(x: Num) -> Num {
+        lua { return math.ceil(std__math__x) }
+    }
+
+    func floor(x: Num) -> Num {
+        lua { return math.floor(std__math__x) }
+    }
+
+    func max(a: Num, b: Num) -> Num {
+        lua { return math.max(std__math__a, std__math__b) }
+    }
+
+    func min(a: Num, b: Num) -> Num {
+        lua { return math.min(std__math__a, std__math__b) }
+    }
+
+    func pow(base: Num, exp: Num) -> Num {
+        lua { return math.pow(std__math__base, std__math__exp) }
+    }
+
+    func sqrt(x: Num) -> Num {
+        lua { return math.sqrt(std__math__x) }
+    }
+
+    func sin(x: Num) -> Num {
+        lua { return math.sin(std__math__x) }
+    }
+
+    func cos(x: Num) -> Num {
+        lua { return math.cos(std__math__x) }
+    }
+
+    func tan(x: Num) -> Num {
+        lua { return math.tan(std__math__x) }
+    }
+
+    func atan(x: Num) -> Num {
+        lua { return math.atan(std__math__x) }
+    }
+
+    func atan2(y: Num, x: Num) -> Num {
+        lua { return math.atan2(std__math__y, std__math__x) }
+    }
+
+    func deg(rad_n: Num) -> Num {
+        lua { return math.deg(std__math__rad_n) }
+    }
+
+    func rad(deg_n: Num) -> Num {
+        lua { return math.rad(std__math__deg_n) }
+    }
+
+    func random(arg_0: Num, arg_1: Num) -> Num {
+        if arg_0 != nil && arg_1 == nil { arg_1 = arg_0; arg_0 = 0 }
+        lua { return math.random(std__math__arg_0, std__math__arg_1) }
+    }
+}

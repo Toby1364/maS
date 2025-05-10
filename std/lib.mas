@@ -1,0 +1,13 @@
+
+namespace std {
+    include wrappers;
+    
+    include types;
+    include string;
+
+    include io;
+    include thread;
+    
+    using std::io;
+    using std::string;
+}

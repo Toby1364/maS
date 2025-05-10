@@ -1,0 +1,22 @@
+
+func typeof(x: Any) -> Str {
+    lua { return type(std__x) }
+}
+
+func Str(x: Any) -> Str {
+    lua { return tostring(std__x) }
+}
+
+func Num(x: Any) -> Num {
+    lua { return tonumber(std__x) }
+}
+
+func Num(x: Any, base: Num) -> Num {
+    lua { return tonumber(std__x, std__base) }
+}
+
+func Bool(x: Any) -> Bool {
+    if typeof(x) == "bool" { return x }
+    else if typeof(x) == "number" { return x != 0 }
+    else { return x == "true" }
+}

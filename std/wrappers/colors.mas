@@ -1,0 +1,22 @@
+
+namespace colors {
+    let white:      Num = 0x1;
+    let orange:     Num = 0x2;
+    let magenta:    Num = 0x4;
+    let lightBlue:  Num = 0x8;
+    
+    let yellow:     Num = 0x10;
+    let lime:       Num = 0x20;
+    let pink:       Num = 0x40;
+    let gray:       Num = 0x80;
+
+    let lightGray:  Num = 0x100;
+    let cyan:       Num = 0x200;
+    let purple:     Num = 0x400;
+    let blue:       Num = 0x800;
+
+    let brown:      Num = 0x1000;
+    let green:      Num = 0x2000;
+    let red:        Num = 0x4000;
+    let black:      Num = 0x8000;
+}

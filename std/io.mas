@@ -1,0 +1,16 @@
+
+namespace io {
+    func println(s: Any) {
+        lua { _G.print(std__io__s) }
+    }
+
+    func print(s: Any) {
+        lua { _G.write(std__io__s) }
+    }
+
+    func log(type: Str, msg: Str) {
+        if type == "error" {
+            std::io::println(msg);
+        }
+    }
+}

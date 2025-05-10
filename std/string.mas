@@ -1,0 +1,102 @@
+namespace string {
+    func len(s: Str) -> Num {
+        lua { return string.len(std__string__s) }
+    }
+
+    func sub(s: Str, i: Num, j: Num) -> Str {
+        if j != nil { j += 1 }
+        lua { return string.sub(std__string__s, std__string__i + 1, std__string__j) }
+    }
+
+    func upper(s: Str) -> Str {
+        lua { return string.upper(std__string__s) }
+    }
+
+    func lower(s: Str) -> Str {
+        lua { return string.lower(std__string__s) }
+    }
+
+    func reverse(s: Str) -> Str {
+        lua { return string.reverse(std__string__s) }
+    }
+
+    func rep(s: Str, n: Num) -> Str {
+        lua { return string.rep(std__string__s, std__string__n) }
+    }
+
+    func byte(s: Str, i: Num) -> Num {
+        lua { return string.byte(std__string__s, std__string__i + 1) }
+    }
+
+    func char(i: Num) -> Str {
+        lua { return string.char(std__string__i) }
+    }
+
+    func find(s: Str, pattern: Str) -> Num {
+        lua { return string.find(std__string__s, std__string__pattern) }
+    }
+
+    func match(s: Str, pattern: Str) -> Str {
+        lua { return string.match(std__string__s, std__string__pattern) }
+    }
+
+    func gmatch(s: Str, pattern: Str) -> Any {
+        lua { return string.gmatch(std__string__s, std__string__pattern) }
+    }
+
+    func gsub(s: Str, pattern: Str, repl: Str) -> Str {
+        lua { return string.gsub(std__string__s, std__string__pattern, std__string__repl) }
+    }
+
+    func trim(s: Str) -> Str {
+        lua { return (std__string__s:gsub("^%s*(.-)%s*$", "%1")) }
+    }
+
+    func starts_with(s: Str, prefix: Str) -> Bool {
+        return sub(s, 1, len(prefix)) == prefix
+    }
+
+    func ends_with(s: Str, suffix: Str) -> Bool {
+        return sub(s, -len(suffix)) == suffix
+    }
+
+    func split(s: Str, delim: Str) -> Array<Str> {
+        lua {
+            local result = {}
+            if std__string__delim == "" then
+                for i = 1, #std__string__s do
+                    table.insert(result, std__string__s:sub(i,i))
+                end
+            else
+                for part in string.gmatch(std__string__s, "([^" .. std__string__delim .. "]+)") do
+                    table.insert(result, part)
+                end
+            end
+            return result
+        }
+    }
+
+    func join(list: Array<Str>, delim: Str) -> Str {
+        lua {
+            return table.concat(std__string__list, std__string__delim)
+        }
+    }
+
+    func contains(s: Str, substr: Str) -> Bool {
+        lua { return string.find(std__string__s, std__string__substr, 1, true) ~= nil }
+    }
+
+    func pad_left(s: Str, len: Num, char: Str) -> Str {
+        if char == nil { char = " " }
+        let pad_len: Num = len - len(s);
+        if pad_len <= 0 { return s }
+        return rep(char, pad_len) .. s;
+    }
+
+    func pad_right(s: Str, len: Num, char: Str) -> Str {
+        if char == nil { char = " " }
+        let pad_len: Num = len - len(s);
+        if pad_len <= 0 { return s }
+        return s .. rep(char, pad_len);
+    }
+}

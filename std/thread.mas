@@ -1,0 +1,71 @@
+
+namespace thread {
+    let mut ___thread_internal_threads: Table = [];
+    let mut ___thread_internal_thread_names: Array<Str> = [];
+    let mut ___thread_internal_next_id: Num = 1;
+
+    lua {
+        function _G.std__thread_____thread_internal_step()
+            for id, co in _G.pairs(std__thread_____thread_internal_threads) do
+                if coroutine.status(co) ~= "dead" then
+                    local ok, result = coroutine.resume(co, coroutine.yield())
+                    if not ok then
+                        local sid = std__thread_____thread_internal_thread_names[id] or id;
+                        std__io__log("error", "Thread [" .. id .. "] crashed with error:", result:sub(16))
+                        std__thread_____thread_internal_threads[id] = nil
+                    end
+                end
+            end
+        end 
+    }
+
+    func spawn(f: Any, name: Str) -> Num {
+        let id: Num = ___thread_internal_next_id;
+        ___thread_internal_next_id += 1;
+
+        ___thread_internal_thread_names[id-1] = name;
+
+        let sid: Str = std__thread_____thread_internal_thread_names[id] || id;
+        std::io::log("info", "Thread ");
+
+        lua { std__thread_____thread_internal_threads[std__thread__id] = coroutine.create(function() std__thread__f() end) }
+        return id;
+    }
+
+    func kill(t: Num) {
+        ___thread_internal_threads[t-1] = nil
+        ___thread_internal_thread_names[t-1] = nil
+    }
+
+    func alive(t: Num) {
+        let co: Any = ___thread_internal_threads[t-1];
+        lua { return std__thread__co ~= nil and coroutine.status(std__thread__co) ~= "dead" }
+    }
+
+    func name(t: Num) {
+        return ___thread_internal_thread_names[t];
+    }
+
+    func yield() {
+        lua { coroutine.yield() }
+    }
+
+    func sleep(duration: Num) {
+        let target: Num = std::os::clock() + duration;
+        while std::os::clock() < target {
+            lua { coroutine.yield() }
+        }
+    }
+
+    lua {
+        ___internal_application_launcher = function()
+            std__thread__spawn(function() while 1 do coroutine.yield() end end, "Yielder")
+            local main_id = std__thread__spawn(_G.main, "Main")
+            local runner = coroutine.create(function() while true do std__thread_____thread_internal_step() end end)
+
+            while std__thread__alive(main_id) do
+                coroutine.resume(runner)
+            end
+        end
+    }
+}

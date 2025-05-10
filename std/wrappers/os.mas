@@ -1,0 +1,81 @@
+
+namespace os {
+    func pull_event(filter: Str) -> Any {
+        lua { return os.pullEvent(std__os__filter) }
+    }
+
+    func pull_event_raw(filter: Str) -> Any {
+        lua { return os.pullEventRaw(std__os__filter) }
+    }
+
+    func version() -> Str {
+        lua { return os.version() }
+    }
+
+    func run(env: Table, path: Str) -> Bool {}
+    lua {
+        std__os__run = function(env, path, ...) 
+            return os.run(env, path, ...)
+        end
+    }
+
+    func queue_event(name: Str, args: Table) {
+        lua { os.queueEvent(std__os__name, std__os__args) }
+    }
+
+    func start_timer(time: Num) -> Num {
+        lua { return os.startTime(std__os__time) }
+    }
+
+    func cancel_timer(id: Num) {
+        lua { os.cancelTimer(std__os__id) }
+    }
+
+    func set_alarm(time: Num) -> Num {
+        lua { return os.setAlarm(std__os__time) }
+    }
+
+    func cancel_alarm(time: Num) {
+        lua { os.cancelAlarm(std__os__time) }
+    }
+
+    func shutdown() {
+        lua { os.shutdown() }
+    }
+
+    func reboot() {
+        lua { os.reboot() }
+    }
+
+    func computer_id() -> Num {
+        lua { return os.computerID() }
+    }
+
+    func computer_label() -> Str {
+        lua { return os.computerLabel() }
+    }
+
+    func set_computer_label(label: Str) {
+        lua { os.setComputerLabel(std__os__label) }
+    }
+
+    func clock() -> Num {
+        lua { return os.clock() }
+    }
+
+    func time(locale: Any) -> Any {
+        lua { return os.time(std__os__locale) }
+    }
+
+    func day(locale: Str) -> Num {
+        lua { return os.day(std__os__locale) }
+    }
+
+    func epoch(locale: Str) -> Num {
+        lua { return os.epoch(std__os__locale) }
+    }
+
+    func date(format: Str, time: Num) -> Any {
+        lua { return os.date(std__os__format, std__os__time) }
+    }
+}
