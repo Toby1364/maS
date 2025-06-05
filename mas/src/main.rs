@@ -4,9 +4,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::Path;
+use std::process::Command;
 
 use colored::Colorize;
 use multipeek::multipeek;
+use chrono;
 
 fn format_radix(mut x: u32, radix: u32) -> String {
     let mut result = vec![];
@@ -131,13 +133,14 @@ fn main() {
     }
 
     if args.len() < 2 {
-        println!("\n{}\n{} {} {} {}\n\n{}\n{}{}\n{}{}\n", 
+        println!("\n{}\n{} {} {} {}\n\n{}\n{}{}\n{}{}\n{}{}\n", 
             "Usage:".bold().green(), 
             "    maS".bold().cyan(), "<PATH>".cyan(), "[FLAGS]".cyan(), "\tTranspiles the provided file.",
 
             "Flags:".bold().green(),
             "    --readable".bold().cyan(), "\tKeeps original and internal varaible names intact.",
-            "    --keep    ".bold().cyan(), "\tKeeps unused functions and variables."
+            "    --keep    ".bold().cyan(), "\tKeeps unused functions and variables.",
+            "    --run     ".bold().cyan(), "\tAttempts to launch CraftOS-PC.",
         );
     }
     else if let Some(mut tokens) = tokenize(args[1].clone()) {
@@ -162,7 +165,7 @@ fn main() {
 
         let mut i = 0;
         while i < tokens.len() {
-            //println!("{}|{}: {:?}", scope, tokens[i].line_number, tokens[i].symbol);
+            //println!("{}|{}:{}{}{:?}", scope, tokens[i].file, tokens[i].line_number, std::iter::repeat(" ").take(30 - tokens[i].file.len()).collect::<String>(), tokens[i].symbol);
 
             let ns = namespace.iter().map(|s| s.clone()).collect::<Vec<String>>();
             let mut ns = ns.join("__"); if !ns.is_empty() { ns.push_str("__") }
@@ -188,7 +191,7 @@ fn main() {
                             
                         //println!("{:?}", exp.iter().map(|t| t.symbol.clone()).collect::<Vec<Symbol>>());  
 
-                        if tokens[i+1].symbol == Symbol::Semicolon {   
+                        if tokens[i+1].symbol != Symbol::CurlyOpen {   
                             if exp.contains(&Token::sym(Symbol::Equal)) {
                                 let exps = exp.split(|t| *t == Token::sym(Symbol::Equal)).collect::<Vec<&[Token]>>();
 
@@ -211,6 +214,8 @@ fn main() {
                                 let eval_s = eval_exp(exp_s);
                                 
                                 let e_type = get_expr_type(&mut eval_d, &vars, scope, &ns, &using, &tokens[oi]);
+
+                                //println!("{e_type:?} {eval_d}");
                                 
                                 let dest = eval_str(eval_d, &e_type, &vars, scope, &ns, &using, &tokens[oi]);
                                 let src = eval_str(eval_s, &e_type, &vars, scope, &ns, &using, &tokens[oi]);
@@ -221,6 +226,9 @@ fn main() {
                                 else {
                                     lua.push_str(&format!("{} = {} ", dest, src));
                                 }
+                            }
+                            else if exp.ends_with(&[Token::sym(Symbol::Comma)]) {
+                                lua.push_str(&format!("::{}:", eval_exp(exp)));
                             }
                             else {
                                 let exp_eval = eval_str(eval_exp(exp), &Symbol::Any, &vars, scope, &ns, &using, &tokens[oi]);
@@ -243,7 +251,7 @@ fn main() {
                         } 
                     }
 
-                    lua.push_str("if true then ");
+                    lua.push_str("do ");
 
                     let mut brackets = 1;
 
@@ -289,10 +297,10 @@ fn main() {
                     //println!("{:?}", tokens.iter().map(|t| t.symbol.clone()).collect::<Vec<Symbol>>());  
                 }
                 Symbol::Namespace => {
-                    let name = match tokens[i+1].symbol.clone() {
+                    let name = format!("{}", match tokens[i+1].symbol.clone() {
                         Symbol::Custom(s) => s,
                         _ => { error("Invalid namespace name", &tokens[i+1]); String::from("") }
-                    };
+                    });
 
                     if tokens[i+2].symbol != Symbol::CurlyOpen {
                         let ln = &tokens[i].line_number.to_string(); 
@@ -316,7 +324,7 @@ fn main() {
 
                     let mut ns = String::new();
 
-                    ns.push_str(&eval_exp(exp));
+                    ns.push_str(&format!("{}", eval_exp(exp)));
 
                     using.push(ns);
                 }
@@ -336,7 +344,10 @@ fn main() {
                         tokens.remove(j);
                         tokens.remove(j);
 
-                        vars.get_mut(&scope).unwrap().insert(format!("{}{}", ns, name), (tokens[j].symbol.clone(), false));
+                        if let Some(_) = sym_to_str(&tokens[j].symbol) {
+                            vars.get_mut(&scope).unwrap().insert(format!("{}{}", ns, name), (tokens[j].symbol.clone(), false));
+                        }
+                        else { error("Invalid return type", &tokens[j]) }
                     }
                     else {
                         vars.get_mut(&scope).unwrap().insert(format!("{}{}", ns, name), (Symbol::Any, false));
@@ -389,7 +400,9 @@ fn main() {
                     while tokens[i].symbol != Symbol::Semicolon && tokens[i].symbol != Symbol::CurlyClose { expresion.push(tokens[i].clone()); i += 1; }
                     if tokens[i].symbol == Symbol::CurlyClose { i -= 1 }
 
-                    lua.push_str(&format!("return {} ", eval_str(eval_exp(expresion), &vars.get(&0).unwrap().get(&format!("{}{}", ns, last_func_name)).unwrap().0, &vars, scope, &ns, &using, &tokens[oi])));
+                    if vars.get(&0).unwrap().contains_key(&format!("{}{}", ns, last_func_name)) {
+                        lua.push_str(&format!("return {} ", eval_str(eval_exp(expresion), &vars.get(&0).unwrap().get(&format!("{}{}", ns, last_func_name)).unwrap().0, &vars, scope, &ns, &using, &tokens[oi])));
+                    }
                 }
 
                 Symbol::Loop => {
@@ -403,7 +416,7 @@ fn main() {
                             error("Missing '{'", &tokens[i]);
                         } 
                     }
-                    lua.push_str("while true do ");
+                    lua.push_str("while 1 do ");
                 }
                 Symbol::While => {
                     expect_scope = true;
@@ -438,7 +451,7 @@ fn main() {
                     let exp = eval_exp(expresion);
                     i -= 1;
 
-                    if exp.contains("§") {
+                    if exp.contains('§') {
                         let part = exp.split("§").map(|s| s.to_owned()).collect::<Vec<String>>();
 
                         let mut table = eval_str(part[1].to_owned(),&Symbol::Array(Box::new(Symbol::Any)), &vars, scope, &ns, &using, &tokens[oi]);
@@ -456,6 +469,23 @@ fn main() {
                             _ => {}
                         }
                     }
+                    else if exp.contains(',') {
+                        let part = exp.split(",").map(|s| s.to_owned()).collect::<Vec<String>>();
+
+                        let index  = part[0].to_owned();
+                        let target = eval_str(part[1].to_owned(),&Symbol::Num, &vars, scope, &ns, &using, &tokens[oi]);
+                        let incrementer = if part.len() == 3 { Some(eval_str(part[3].to_owned(),&Symbol::Num, &vars, scope, &ns, &using, &tokens[oi])) } else { None };
+
+                        if let Some(incrementer) = incrementer {
+                            lua.push_str(&format!("for {index}=0, {target}, {incrementer} do "));
+                        }
+                        else {
+                            lua.push_str(&format!("for {index}=0, {target} do "));
+                        }
+
+                        if !vars.contains_key(&scope) { vars.insert(scope, HashMap::new()); }
+                        vars.get_mut(&scope).unwrap().insert(index, (Symbol::Num, false));
+                    }
                     else {
                         println!("For loop implementation missing.");
                     }
@@ -468,7 +498,7 @@ fn main() {
                         _ => { error("Invalid label", &tokens[i-1]); "" }
                     }));
                 }
-                Symbol::Continue => { lua.push_str("continue") }
+                Symbol::Continue => { error("Continue unimplemented", &tokens[i]) }
 
                 Symbol::If => {
                     expect_scope = true;
@@ -507,7 +537,7 @@ fn main() {
                             if tokens[i-1].symbol != Symbol::Equal { expresion.push(Token::sym(Symbol::Custom(String::from("nil")))); assigned = false; i -= 1 }
                             while tokens[i].symbol != Symbol::Semicolon && tokens[i].symbol != Symbol::CurlyClose { if assigned { expresion.push(tokens[i].clone()) } i += 1; }
 
-                            lua.push_str(&format!("local {} --[[{}]] = {} ", format!("{}{}", ns, name), v_type, eval_str(eval_exp(expresion), &tokens[oi+4].symbol, &vars, scope, &ns, &using, &tokens[oi])));
+                            lua.push_str(&format!("local {} --[[{}]] = {} \u{0d} ", format!("{}{}", ns, name), v_type, eval_str(eval_exp(expresion), &tokens[oi+4].symbol, &vars, scope, &ns, &using, &tokens[oi])));
                         }
                         else { error(&format!("Unknown type `{:?}`", &tokens[i+4].symbol), &tokens[i+4]) }
                     }
@@ -528,7 +558,7 @@ fn main() {
                             if tokens[i-1].symbol != Symbol::Equal { expresion.push(Token::sym(Symbol::Custom(String::from("nil")))); assigned = false; i -= 1 }
                             while tokens[i].symbol != Symbol::Semicolon && tokens[i].symbol != Symbol::CurlyClose { if assigned { expresion.push(tokens[i].clone()) } i += 1; }
                             
-                            lua.push_str(&format!("local {} --[[const {}]] = {} ", format!("{}{}", ns, name), v_type, eval_str(eval_exp(expresion), &tokens[oi+3].symbol, &vars, scope, &ns, &using, &tokens[oi])));
+                            lua.push_str(&format!("local {} --[[const {}]] = {} \u{0d} ", format!("{}{}", ns, name), v_type, eval_str(eval_exp(expresion), &tokens[oi+3].symbol, &vars, scope, &ns, &using, &tokens[oi])));
                         }
                         else { error(&format!("Unknown type `{:?}`", &tokens[i+3].symbol), &tokens[i+3]) }
                     }
@@ -550,13 +580,13 @@ fn main() {
                 Symbol::CurlyOpen => { 
                     scope += 1;
                     if !expect_scope {
-                        lua.push_str("if true then ");
+                        lua.push_str("do ");
                     }
                     expect_scope = false;
                 }
                 Symbol::CurlyClose => { if scope == 0 { namespace.pop(); } else { lua.push_str("end "); vars.remove(&scope); scope -= 1 } }
 
-                m => { println!("Missing handle for: {:?}", m) }
+                m => { error(&format!("Unexpected `{}`", sym_to_lua(m)), &tokens[i]) }
             }
 
             i += 1;
@@ -567,11 +597,20 @@ fn main() {
 
         lua.push_str("_G.main = main ___internal_application_launcher()");
 
-        lua = postproces(lua, flags);
+        lua = postproces(lua, flags.clone());
+
+        let len = lua.len();
 
         fs::write("startup.lua", lua).expect("Couldn't write to startup.lua");
 
-        println!("\n{}\n", "Finished transpiling".bold().green())
+        println!("\n{}\n{}{}\n", "Finished transpiling".bold().green(), "Characters: ".magenta(), len);
+
+        if flags.contains("run") {
+            Command::new("CraftOS-PC.exe")
+                .args(&["--script", "startup.lua"])
+                .spawn()
+                .expect("Failed to launch CraftOS-PC");
+        }
     }
     else {
         println!("\nUnable to read `{}`\n", args[1]);
@@ -579,15 +618,35 @@ fn main() {
 }
 
 fn postproces(mut lua: String, flags: HashSet<String>) -> String {
-    let mut creadits = String::from("--[[\n\nTranspiled using the original maS transpiler made by Toby1364\n\n]]\n");
+    let mut header = format!(
+        "--[[\n\nTranspiled using the original maS transpiler made by Toby1364\n\nAt:    {}\nFlags: [{}]\n\n]]\n",
+        chrono::offset::Utc::now(), flags.iter().map(|s| s.to_owned()).collect::<Vec<String>>().join(", ")
+    );
 
-    lua = lua.replace("001", "1");
-    lua = lua.replace("--[[]]", " ");
-    for _ in 0..10 { lua = lua.replace("  ", " ") }
+    lua = replace_isolated(&lua, "\n", " ");
+    lua = replace_isolated(&lua, "\r", "");
+    lua = replace_isolated(&lua, "001", "1");
+    lua = replace_isolated(&lua, "--[[]]", " ");
+    lua = replace_isolated(&lua, "--[[", " --[[");
+    lua = replace_isolated(&lua, "]]", "]] ");
+    lua = replace_isolated(&lua, ";", " ");
 
+    lua = replace_isolated(&lua, "0+1", "1");
+    lua = replace_isolated(&lua, "1+1", "2");
+    lua = replace_isolated(&lua, "2+1", "3");
+    lua = replace_isolated(&lua, "3+1", "4");
+    lua = replace_isolated(&lua, "4+1", "5");
+    lua = replace_isolated(&lua, "5+1", "6");
+    lua = replace_isolated(&lua, "6+1", "7");
+    lua = replace_isolated(&lua, "7+1", "8");
+    lua = replace_isolated(&lua, "8+1", "9");
+    
     if !flags.contains("readable") {
         lua = remove_comments(lua);
     }
+
+    for _ in 0..10 { lua = replace_isolated(&lua, "  ", " ") }
+    lua = lua.replace("-1+1", "");
 
     if !flags.contains("keep") {
         for _ in 0..50 {
@@ -606,16 +665,39 @@ fn postproces(mut lua: String, flags: HashSet<String>) -> String {
         lua = replace_var_names(lua);
     }
 
-    lua = lua.replace("-1+1", "");
+    remove_redundant_do_end(&mut lua);
 
-    creadits.push_str(&lua);
-    return creadits;
+    lua = lua.replace("\u{0d}", "");
+    for _ in 0..10 { lua = replace_isolated(&lua, "  ", " ") }
+
+    lua = replace_nonstr(&lua, "\\", "");
+
+    lua = replace_isolated(&lua, ") ", ")"); lua = replace_isolated(&lua, " )", ")");
+    lua = replace_isolated(&lua, "( ", "("); lua = replace_isolated(&lua, " (", "(");
+    lua = replace_isolated(&lua, "[ ", "["); lua = replace_isolated(&lua, " [", "[");
+    lua = replace_isolated(&lua, "] ", "]"); lua = replace_isolated(&lua, " ]", "]");
+    lua = replace_isolated(&lua, "{ ", "{"); lua = replace_isolated(&lua, " {", "{");
+    lua = replace_isolated(&lua, "} ", "}"); lua = replace_isolated(&lua, " }", "}");
+    lua = replace_isolated(&lua, ", ", ","); lua = replace_isolated(&lua, " ,", ",");
+
+    lua = replace_isolated(&lua, "+ ", "+"); lua = replace_isolated(&lua, " +", "+");
+    lua = replace_isolated(&lua, "- ", "-"); lua = replace_isolated(&lua, " -", "-");
+    lua = replace_isolated(&lua, "* ", "*"); lua = replace_isolated(&lua, " *", "*");
+    lua = replace_isolated(&lua, "/ ", "/"); lua = replace_isolated(&lua, " /", "/");
+    lua = replace_isolated(&lua, "% ", "%"); lua = replace_isolated(&lua, " %", "%");
+    lua = replace_isolated(&lua, "= ", "="); lua = replace_isolated(&lua, " =", "=");
+    lua = replace_isolated(&lua, ".. ", ".."); lua = replace_isolated(&lua, " ..", "..");
+
+    lua = replace_isolated(&lua, "[]", "{}"); // I'm lazy
+
+    header.push_str(&lua);
+    return header;
 }
 
 fn get_lua_funcs(lua: String) -> Vec<String> {
     let mut functions: Vec<String> = Vec::new();
 
-    let tokens = lua.split(|c: char| " +-*/%()<>~=,[]\n\r".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
+    let tokens = lua.split(|c: char| " +-*/%()<>~=,[]".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
 
     let mut i = 2;
     while i < tokens.len() {
@@ -629,17 +711,21 @@ fn get_lua_funcs(lua: String) -> Vec<String> {
 }
 
 fn is_lua_func_called(lua: String, name: String) -> bool {
-    let tokens = lua.split(|c: char| " +-*/%()<>~=,[]\n\r".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
+    let tokens = lua.replace("..", " ").split(|c: char| " +-*/%()<>~=,[]".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
 
-    let mut i = 1;
+    let mut f = 0;
+
+    let mut i = 0;
     while i < tokens.len() {
 
-        if tokens[i-1] != "function" && tokens[i] == name { return true }
+        if tokens[i] == name { f += 1 }
 
         i += 1;
     }
 
-    return false;
+    //if f <= 1 { println!("{name}: {f}") }
+
+    return f > 1;
 }
 
 fn remove_lua_func(mut lua: String, name: String) -> String {
@@ -648,19 +734,31 @@ fn remove_lua_func(mut lua: String, name: String) -> String {
     if let Some(index) = lua.find(&format!("local function {name}(")) {
         let mut scope = 1;
 
+        let mut lp = false;
+
         while scope != 0 {
             func.push(lua.remove(index));
 
-            if func.ends_with("]if ") || func.ends_with("\nif ") || func.ends_with(" if ") || func.ends_with(" for ") || func.ends_with(" while ") { scope += 1 }
+            if func.ends_with(" for ") || func.ends_with(" while ") { lp = true }
+            if func.ends_with(" if ") || func.ends_with(" for ") || func.ends_with(" while ") || (func.ends_with(" do ") && !lp) { scope += 1 }
+            if func.ends_with(" do ") { lp = false }
             if func.ends_with(" end ") { scope -= 1 }
+
+            //if &name == "std__array__slice" {
+                //if func.len() > println!("{:?}", );
+            //}
         }
     }
+
+    //if &name == "std__array__slice" {
+        //std::fs::write("debug.txt", &func).unwrap();
+    //}
 
     return lua;
 }
 
 fn remove_unused_vars(mut lua: String) -> String {
-    let tokens = lua.split(|c: char| " +-*/%()<>~=,[]\n\r".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
+    let tokens = lua.split(|c: char| " +-*/%()<>~=,[]".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
 
     let mut vars: HashSet<String> = HashSet::new();
 
@@ -681,19 +779,21 @@ fn remove_unused_vars(mut lua: String) -> String {
     for var in vars {
         if lua.matches(&var).count() < 2 {
             let mut var_dec = String::new();
-
             let mut last_tok = String::new();
 
             if let Some(mut index) = lua.find(&format!("local {var}")) {
 
                 while var_dec.len() <= 5 || match last_tok.as_str() {
-                        "and" | "break" | "do" | "else" | "elseif" | "end" | "false" | "for" | 
-                        "function" | "if" | "in" | "local" | "nil" | "not" | "or" | "repeat" | 
-                        "return" | "then" | "true" | "until" | "while" => {false} _ => {true}} {
-                    
+                        "and" | "break" | "do" | "else" | "elseif" | "end" | "for" | 
+                        "function" | "if" | "in" | "local" | "not" | "or" | "repeat" | 
+                        "return" | "then" | "until" | "while" => {false} _ => {true}} {
+
                     if chars[index] == ' ' { last_tok.clear() }
+                    else if chars[index] == '\u{0d}' { break }
                     else { last_tok.push(chars[index]) }
-                    var_dec.push(chars[index]);
+                    var_dec.push(chars[index]);  
+                    
+                    //println!("{var_dec} | {last_tok}");
 
                     index += 1;
                 }
@@ -714,9 +814,9 @@ fn remove_unused_vars(mut lua: String) -> String {
 }
 
 fn replace_var_names(mut lua: String) -> String {
-    let mut tokens = lua.split(|c: char| " +-*/%()<>~=,[]\n\r".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
+    let tokens = lua.split(|c: char| " +-*/%()<>~=,[]".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
 
-    let mut vars: HashSet<String> = HashSet::new();
+    let mut vars: HashMap<String, usize> = HashMap::new();
 
     let mut indexer = 0;
 
@@ -724,11 +824,13 @@ fn replace_var_names(mut lua: String) -> String {
 
     for i in 1..tokens.len() {
         if tokens[i] == " " || tokens[i].is_empty() { continue }
+        if tokens[i] == "\"" { str =! str; continue }
         if tokens[i].starts_with('\"') && !tokens[i].ends_with('\"') { str = true; continue }
         if str { if tokens[i].ends_with('\"') { str = false } continue }
         if tokens[i].parse::<f64>().is_ok() { continue }
         if let Some(n) = tokens[i].strip_prefix("0x") { if u64::from_str_radix(n, 16).is_ok() { continue } }
-        if tokens[i].contains(|c: char| !c.is_alphanumeric() && c != '_') { continue; }
+        if tokens[i].contains(|c: char| !c.is_alphanumeric() && c != '_') { continue }
+
 
         match tokens[i].as_str() {
             "and" | "break" | "do" | "else" | "elseif" | "end" | "false" | "for" | 
@@ -736,9 +838,17 @@ fn replace_var_names(mut lua: String) -> String {
             "return" | "then" | "true" | "until" | "while" => {}
 
             name => {
-                if !vars.contains(name) {
+                if !vars.contains_key(name) { vars.insert(name.to_owned(), 0); }
+                *vars.get_mut(name).unwrap() += 1;
+                /*if !vars.contains(name) {
                     vars.insert(name.to_owned());
-                    while format_radix(indexer, 36).starts_with(|c: char| c.is_digit(10)) { indexer += 1 }
+                    while format_radix(indexer, 36).starts_with(|c: char| c.is_digit(10)) || 
+                    match format_radix(indexer, 36).as_ref() {
+                        "and" | "break" | "do" | "else" | "elseif" | "end" | "false" | "for" | 
+                        "function" | "if" | "in" | "local" | "nil" | "not" | "or" | "repeat" | 
+                        "return" | "then" | "true" | "until" | "while" => {true} _ => false} { 
+                            indexer += 1 
+                    }
 
 
                     let rep = format_radix(indexer, 36);
@@ -747,10 +857,35 @@ fn replace_var_names(mut lua: String) -> String {
                         indexer += 1;
                     }
 
-                    tokens = lua.split(|c: char| " +-*/%()<>~=,[]\n\r".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
-                }
+                }*/
             }
         }
+    }
+
+    let mut max: (String, usize) = (String::new(), 0);
+
+    while vars.len() > 0 {
+        for var in vars.clone() { if var.1 > max.1 { max = var } }
+        vars.remove(&max.0);
+
+        while format_radix(indexer, 36).starts_with(|c: char| c.is_digit(10)) ||
+                lua.contains(&format!("{} =", format_radix(indexer, 36))) ||
+                lua.contains(&format!("{}=", format_radix(indexer, 36))) ||
+        match format_radix(indexer, 36).as_ref() {
+            "and" | "break" | "do" | "else" | "elseif" | "end" | "false" | "for" | 
+            "function" | "if" | "in" | "local" | "nil" | "not" | "or" | "repeat" | 
+            "return" | "then" | "true" | "until" | "while" => {true} _ => false} { 
+                indexer += 1 
+        }
+
+
+        let rep = format_radix(indexer, 36);
+        if rep.len() < max.0.len() {
+            lua = replace_isolated(&lua, &max.0, &rep);
+            indexer += 1;
+        }
+
+        max = (String::new(), 0);
     }
 
     return lua;
@@ -770,33 +905,45 @@ fn remove_comments(lua: String) -> String {
         if !comment { stripped.push(chars[i]) }
     }
 
-    for _ in 0..10 { stripped = stripped.replace("  ", " ") }
+    for _ in 0..10 { stripped = replace_isolated(&stripped, "  ", " ") }
 
     return stripped;
 }
 
 fn replace_isolated(input: &str, from: &str, to: &str) -> String {
+    if input.is_empty() { return String::new() }
+
+    let from = from.replace("‼", "");
+    let to: String = to.replace("‼", "");
+
     let mut result = String::with_capacity(input.len());
-    let chars: Vec<char> = input.chars().collect();
+    let mut chars: Vec<char> = input.chars().collect(); chars.push(' ');
     let from_chars: Vec<char> = from.chars().collect();
     let from_len = from_chars.len();
 
-    let mut string = false;
+    let mut string = chars[0] == '"';
+
+    if input.len() < 2 { return input.replace(&from, &to).to_owned() }
+
+    //println!("{input:?}");
 
     let mut i = 0;
-    while i <= chars.len() - from_len {
-        if chars[i] != '\\' && chars[i+1] == '"' { string = !string }
+    while i + from_len < chars.len() && i < chars.len() {
+        if i > 0 && chars[i-1] != '\\' && chars[i] == '"' { string = !string }
+
+        //println!("{string} | {}", chars[i]);
 
         if &chars[i..i + from_len] == from_chars.as_slice() {
+            //let before_before = if i < 2 { None } else { Some(chars[i - 2]) };
             let before = if i == 0 { None } else { Some(chars[i - 1]) };
             let after = chars.get(i + from_len).copied();
 
             let is_non_alnum = |c: Option<char>| {
-                c.map_or(true, |c| !c.is_alphanumeric() && c != '_')
+                c.map_or(true, |c| !c.is_alphanumeric() && c != '_' && c != '\\')
             };
 
-            if !string && is_non_alnum(before) && is_non_alnum(after) {
-                result.push_str(to);
+            if !string && (( /* !(if let Some(c) = before_before {c != '.'} else {true} && if let Some(c) = before {c == '.'} else {false}) &&*/ is_non_alnum(before) && is_non_alnum(after)) || to.contains(|c: char| !c.is_alphanumeric() && c != '_')) {
+                result.push_str(&to);
                 i += from_len;
                 continue;
             }
@@ -812,8 +959,124 @@ fn replace_isolated(input: &str, from: &str, to: &str) -> String {
         i += 1;
     }
 
+    if let Some(t) = result.strip_suffix(' ') { result = t.to_owned() }
+
+    //println!("{input} -> {result}    {from:?} -> {to:?}    Str: {string}");
+
+    //println!("{result}");
+
     result
 }
+
+fn replace_nonstr(input: &str, from: &str, to: &str) -> String {
+    if input.is_empty() { return String::new() }
+
+    let from = from.replace("‼", "");
+    let to: String = to.replace("‼", "");
+
+    let mut result = String::with_capacity(input.len());
+    let mut chars: Vec<char> = input.chars().collect(); chars.push(' ');
+    let from_chars: Vec<char> = from.chars().collect();
+    let from_len = from_chars.len();
+
+    let mut string = chars[0] == '"';
+
+    if input.len() < 2 { return input.replace(&from, &to).to_owned() }
+
+    //println!("{input:?}");
+
+    let mut i = 0;
+    while i + from_len < chars.len() && i < chars.len() {
+        if i > 0 && chars[i-1] != '\\' && chars[i] == '"' { string = !string }
+
+        //println!("{string} | {}", chars[i]);
+
+        if &chars[i..i + from_len] == from_chars.as_slice() {
+            if !string {
+                result.push_str(&to);
+                i += from_len;
+                continue;
+            }
+        }
+
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    // Push any trailing characters
+    while i < chars.len() {
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    if let Some(t) = result.strip_suffix(' ') { result = t.to_owned() }
+
+    //println!("{input} -> {result}    {from:?} -> {to:?}    Str: {string}");
+
+    //println!("{result}");
+
+    result
+}
+
+fn remove_redundant_do_end(lua: &mut String) {
+
+    //while lua.contains(" do ") {
+    for _ in 0..40 {
+        let mut contents = String::new();
+
+        let mut copy = lua.clone();
+        if let Some(index) = copy.find(&format!(" do ")) {
+            let mut i = index;
+            loop { 
+                i -= 1; 
+                let idc = copy.char_indices().nth(i).unwrap().0;
+                if copy[..idc].ends_with("while") || copy[..idc].ends_with("for") { 
+                    lua.insert(index+3, '\u{0d}'); 
+                    continue;
+                } 
+                else if i == 1 || copy[..idc].ends_with("do") { break } 
+            }
+            for _ in 0..4 { copy.remove(index); }
+
+            let mut scope = 1;
+
+            let mut lp = false;
+
+            while scope != 0 {
+                if index == copy.len() { return }
+                contents.push(copy.remove(index));
+
+                if contents.ends_with(" for ") || contents.ends_with(" while ") { lp = true }
+                if contents.ends_with(" function ") || contents.ends_with(" if ") || contents.ends_with(" for ") || contents.ends_with(" while ") || (contents.ends_with(" do ") && !lp) { scope += 1 }
+                if contents.ends_with(" do ")  { lp = false }
+                if contents.ends_with(" end ") { scope -= 1 }
+            }
+        }
+        contents = contents.strip_suffix(" end ").unwrap().to_owned();
+
+        //println!("{contents}");
+
+        if !contents.contains(" local ") { *lua = lua.replace(&format!(" do {contents} end "), &format!(" {contents} ")) }
+        else { *lua = lua.replace(&format!(" do {contents} end "), &format!(" do\u{0d} {contents} end ")) }
+    }
+}
+
+/*fn lua_contains(lua: &str, sub: &str) -> usize {
+    *///let tokens = lua.split(|c: char| " +-*/%()<>~=,[]".contains(c)).map(|s| s.to_owned()).collect::<Vec<String>>();
+    /*
+
+    let mut subs = 0;
+
+    let mut i = 0;
+    while i < tokens.len() {
+
+        if tokens[i] == sub { subs += 1 }
+
+        i += 1;
+    }
+
+    return subs;
+}*/
 
 fn error(msg: &str, token: &Token) {
     print!("\n{}", "Error: ".bold().red());
@@ -841,11 +1104,11 @@ fn sym_to_lua(sym: &Symbol) -> String {
         Symbol::Else => String::from("else"),
         Symbol::Let => String::from("let"),
         Symbol::Mut => String::from("mut"),
-        Symbol::Str => String::from("str"),
-        Symbol::Num => String::from("num"),
-        Symbol::Bool => String::from("bool"),
-        Symbol::Any => String::from("any"),
-        Symbol::Array(_) => String::from("array"),
+        Symbol::Str => String::from("Str"),
+        Symbol::Num => String::from("Num"),
+        Symbol::Bool => String::from("Bool"),
+        Symbol::Any => String::from("Any"),
+        Symbol::Array(_) => String::from("Array"),
         Symbol::Or => String::from("or"),
         Symbol::And => String::from("and"),
         Symbol::Not => String::from("not"),
@@ -902,7 +1165,8 @@ fn sym_to_str(sym: &Symbol) -> Option<String> {
 fn eval_exp(exp: Vec<Token>) -> String {
     let mut eval = String::new();
 
-    for t in exp {
+    let mut i = 0;
+    for t in &exp {
         match &t.symbol {
             Symbol::Custom(s) => eval.push_str(s),
 
@@ -916,13 +1180,16 @@ fn eval_exp(exp: Vec<Token>) -> String {
             Symbol::Less => eval.push('<'),
             Symbol::Greater => eval.push('>'),
 
-            Symbol::Not => eval.push('~'),
+            Symbol::Not => {
+                if i < exp.len()-1 && exp[i+1] == Token::sym(Symbol::Equal) { eval.push('~') }
+                else { eval.push_str("!"); }
+            },
             Symbol::Hash => eval.push('#'),
             Symbol::In => eval.push('§'),
             Symbol::Colon => eval.push('_'),
 
-            Symbol::And => eval.push_str("and"),
-            Symbol::Or => eval.push_str("or"),
+            Symbol::And => eval.push_str("&&"),
+            Symbol::Or => eval.push_str("||"),
 
             Symbol::Comma => eval.push(','),
             Symbol::Dot => eval.push('.'),
@@ -933,8 +1200,12 @@ fn eval_exp(exp: Vec<Token>) -> String {
             Symbol::SquareOpen => eval.push('['),
             Symbol::SquareClose => eval.push(']'),
 
-            _ => { println!("Can't eval: {:?}", t.symbol) }
+            o => { 
+                //println!("Can't eval: {:?}", t.symbol) 
+                eval.push_str(&sym_to_lua(o));
+            }
         }
+        i += 1;
     }
 
     return eval;
@@ -959,8 +1230,13 @@ fn eval_str(exp: String, e_type: &Symbol, vars: &HashMap<usize,HashMap<String, (
     else { eval = exp }*/
     //eval = exp;
 
+    //println!("{e_type:?}");
+
     let exp_type = get_expr_type(&mut eval, &vars, scope, namespace, using, &token);
-    if *e_type != Symbol::Any && exp_type != Symbol::Any && e_type != &exp_type && !(*e_type == Symbol::Array(Box::new(Symbol::Any)) && if let Symbol::Array(_) = exp_type {true} else {false} ) 
+    if *e_type != Symbol::Any && exp_type != Symbol::Any && e_type != &exp_type && 
+        (!(*e_type == Symbol::Array(Box::new(Symbol::Any))      && if let Symbol::Array(_) = &exp_type {true} else {false}) && 
+         !(if let Symbol::Array(_) = e_type {true} else {false} && exp_type == Symbol::Array(Box::new(Symbol::Any))))
+
         { error(&format!("Expected `{}`, but got `{}`", sym_to_str(e_type).unwrap(), sym_to_str(&exp_type).unwrap()), &token) }
 
     if eval.starts_with("[") && eval.ends_with("]") { eval = eval.replace("[", "{").replace("]", "}") }
@@ -968,6 +1244,7 @@ fn eval_str(exp: String, e_type: &Symbol, vars: &HashMap<usize,HashMap<String, (
     return eval;
 }
 
+//Name misleading af
 fn get_expr_type(
     exp: &mut String,
     vars: &HashMap<usize, HashMap<String, (Symbol, bool)>>,
@@ -1028,6 +1305,7 @@ fn get_expr_type(
 
     let mut copy = exp.clone();
 
+    /* FUNCTIONS */
     if let Some(paren_pos) = exp.find('(') {
         let mut fine = true;
         let mut fun = String::new();
@@ -1044,7 +1322,7 @@ fn get_expr_type(
             prev_c = c;
             if c == '(' { if b_scope == 0 { outside_scopes += 1 } b_scope += 1 } 
             if c == ')' { b_scope -= 1 }
-            if b_scope == 0 && "+-*/%<>~=&|,.§".contains(c) { fine = false; copy = remove_function_args(exp); break }
+            if b_scope == 0 && "+-*/%<>~=&|,.§!".contains(c) { fine = false; copy = prefix_function_args(exp); break }
             if outside_scopes > 1 { fine = false; break }
         }
         if fine && exp.ends_with(')') && paren_pos != 0 {
@@ -1066,6 +1344,7 @@ fn get_expr_type(
                 for s in (0..=scope).rev() {
                     if let Some(scope_vars) = vars.get(&s) {
                         if let Some((vtype, _)) = scope_vars.get(&format!("{}{}", namespace, func_name)) {
+                            uses = Some(namespace.to_owned());
                             func_type = Some(vtype.clone());
                             break;
                         }
@@ -1077,7 +1356,7 @@ fn get_expr_type(
                     for s in (0..=scope).rev() {
                         if let Some(scope_vars) = vars.get(&s) {
                             if let Some((vtype, _)) = scope_vars.get(&format!("{}__{}", name, func_name)) {
-                                uses = Some(name.to_owned());
+                                uses = Some(format!("{}__", name));
                                 func_type = Some(vtype.clone());
                                 break;
                             }
@@ -1085,6 +1364,7 @@ fn get_expr_type(
                     }
                 }
             }
+            if func_name.contains(['[', ']']) { func_type = Some(Symbol::Any) }
 
             if func_type.is_none() {
                 error(&format!("Undeclared function `{}`", func_name), token);
@@ -1096,11 +1376,13 @@ fn get_expr_type(
             }
 
             if let Some(ns) = uses {
-                *exp = format!("{}__{}", ns, func_name);
+                *exp = format!("{}{}", ns, func_name);
             }
             else {
                 *exp = func_name.to_owned();
             }
+
+            //println!("{c:?} {args:?}");
 
             exp.push('(');
 
@@ -1115,82 +1397,133 @@ fn get_expr_type(
         }
     }
 
-    if exp.contains('[') {
-        return resolve_indexing_chain(exp, vars, scope, namespace, using, token);
+    let mut toks = split_array_accesses(&copy);
+
+    //println!("{toks:?}");
+
+    copy.clear();
+    //exp.clear();
+    for t in &mut toks {
+        //println!("{t:?}");
+        //let orig = t.0.clone();
+        if t.1 {
+            resolve_indexing_chain(&mut t.0, vars, scope, namespace, using, token);
+            //*exp = replace_isolated(&exp, &orig, &t.0);
+            //exp.push_str(&t.0);
+
+            //if *exp != copy { println!("{exp:?} {copy:?} | {orig:?} {:?}", t.0) }
+
+            //println!("{} | {} <- {}", exp, orig, t.0);
+
+            copy.push_str("‼nil");
+        }
+        else {
+            //exp.push_str(&t.0);
+            copy.push_str(&t.0);
+        }
+        //if exp.ends_with('#') { exp.pop(); }
+        if copy.ends_with('#') { copy.pop(); }
     }
+
+    //println!("{exp}");
+
+    /*if exp.ends_with(']') {
+        return resolve_indexing_chain(exp, vars, scope, namespace, using, token);
+    }*/
 
     // 💡 Resolve individual tokens in the expression
     let mut current_type = Any;
     let mut tokens = copy
-        .split(|c: char| "+-*/%()<>~=&|,.§".contains(c))
+        .split(|c: char| "+-*/%()<>~=&|,.§!".contains(c))
         .filter(|s| !s.is_empty())
+        .map(|s| s.to_owned())
         .collect::<Vec<_>>();
 
     let mut str = false;
 
+    //exp.push(' ');
+
     //println!("\n{exp} -> {copy}");
 
+    let mut total_type_check = !exp.contains(['&', '|']);
+
     for token_str in &mut tokens {
+
+        //println!("{str} | {token_str:?}");
+
+        let mut type_check = total_type_check;
+        while token_str.starts_with("‼") { *token_str = token_str.strip_prefix("‼").unwrap().to_owned(); type_check = false }
+        
         if token_str.is_empty() {
             continue;
         }
 
+        //print!("{token_str} -> ");
+
         let tok_type = 
-        if token_str.starts_with('"') {
-            str = true;
-            Str
-        } else if token_str.ends_with('"') && !token_str.ends_with("\\\"") {
-            str = false;
-            Str
-        } else if str {
-            Str
-        } else if token_str.parse::<i64>().is_ok() || token_str.parse::<f64>().is_ok() || if let Some(s) = token_str.strip_prefix("0x") { u64::from_str_radix(s, 16).is_ok() } else { false } {
-            Num
-        } else if *token_str == "true" || *token_str == "false" {
-            Bool
-        } else if *token_str == "nil" {
-            Any
-        } else if token_str.contains('[') && token_str.ends_with(']') {
-            let mut ts = token_str.to_string();
-            let t = get_expr_type(&mut ts, vars, scope, namespace, using, token);
-            *exp = exp.replace(*token_str, &ts);
-            return t;
-        } else {
-            let mut found = false;
-            let mut sym = Any;
-
-            let mut len = false;
-
-            if token_str.starts_with("#") { *token_str = token_str.strip_prefix("#").unwrap(); len = true }
-   
-            for s in (0..=scope).rev() {
-                if let Some(scope_vars) = vars.get(&s) {
-                    if let Some((vtype, _)) = scope_vars.get(&format!("{}{}", namespace, *token_str)) {
-                        if !exp.contains(&format!("{}{}", namespace, *token_str)) { *exp = exp.replace(*token_str, &format!("{}{}", namespace, *token_str)) }
-                        sym = vtype.clone();
-                        found = true;
-                        break;
-                    }
-                }
+            if token_str == "\"" {
+                if !type_check { total_type_check = false }
+                str =! str;
+                Str
             }
-            if !found {
+            else if token_str.ends_with('"') && !token_str.ends_with("\\\"") {
+                str = false;
+                Str
+            } else if token_str.starts_with('"') {
+                if !type_check { total_type_check = false }
+                str = true;
+                Str
+            } else if str {
+                Str
+            } else if token_str.parse::<i64>().is_ok() || token_str.parse::<f64>().is_ok() || if let Some(s) = token_str.strip_prefix("0x") { u64::from_str_radix(s, 16).is_ok() } else { false } {
+                Num
+            } else if *token_str == "true" || *token_str == "false" {
+                Bool
+            } else if *token_str == "nil" {
+                Any
+            }/* else if token_str.contains('[') && token_str.ends_with(']') {
+                let mut prefix = String::new();
+                let mut raw = token_str.to_string();
+
+                if raw.starts_with('#') {
+                    prefix = "#".to_string();
+                    raw = raw.trim_start_matches('#').to_string();
+                }
+
+                let mut ts = raw.clone();
+                let t = resolve_indexing_chain(&mut ts, vars, scope, namespace, using, token);
+                let transformed = format!("{}{}", prefix, ts);
+
+                *exp = replace_isolated(exp, *token_str, &transformed);
+                t
+            }*/ else if *token_str == "[]" {
+                *exp = exp.replace("[]", "{}");
+                Array(Box::new(Any))
+            } else {
+                let mut found = false;
+                let mut sym = Any;
+
+                let mut len = false;
+
+                if token_str.starts_with("#") { *token_str = token_str.strip_prefix("#").unwrap().to_owned(); len = true }
+
+                //println!("{token_str} | {using:?}");
+    
                 for s in (0..=scope).rev() {
                     if let Some(scope_vars) = vars.get(&s) {
-                        //println!("\n\n\n{token_str:?} {s}: {scope_vars:?}");
-                        if let Some((vtype, _)) = scope_vars.get(*token_str) {
+                        if let Some((vtype, _)) = scope_vars.get(&format!("{}{}", namespace, *token_str)) {
+                            /*if !exp.contains(&format!("{}{}", namespace, *token_str)) {*/ *exp = replace_isolated(exp, token_str, &format!("{}{}", namespace, *token_str)); //}
                             sym = vtype.clone();
                             found = true;
                             break;
                         }
                     }
                 }
-            }
-            if !found {
-                for name in using {
+                if !found {
                     for s in (0..=scope).rev() {
                         if let Some(scope_vars) = vars.get(&s) {
-                            if let Some((vtype, _)) = scope_vars.get(&format!("{}__{}", name, *token_str)) {
-                                if !exp.contains(&format!("{}__{}", name, *token_str)) { *exp = exp.replace(*token_str, &format!("{}__{}", name, *token_str)) }
+                            //println!("\n\n\n{token_str:?} {s}: {scope_vars:?}");
+                            if let Some((vtype, _)) = scope_vars.get(token_str) {
                                 sym = vtype.clone();
                                 found = true;
                                 break;
@@ -1198,43 +1531,86 @@ fn get_expr_type(
                         }
                     }
                 }
-            }
+                if !found {
+                    for name in using {
+                        for s in (0..=scope).rev() {
+                            if let Some(scope_vars) = vars.get(&s) {
+                                if let Some((vtype, _)) = scope_vars.get(&format!("{}__{}", name, *token_str)) {
+                                    /*if !exp.contains(&format!("{}__{}", name, *token_str)) {*/ *exp = replace_isolated(exp, token_str, &format!("{}__{}", name, *token_str)); //}
+                                    sym = vtype.clone();
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
 
-            //println!("{}", exp);
+                if !found {
+                    error(&format!("Undeclared variable or function `{}`", *token_str), token);
+                }
 
-            if !found {
-                error(&format!("Undeclared variable or function `{}`", *token_str), token);
-            }
+                if len && match sym { Symbol::Array(_) => false, _ => true } {
+                    error(&format!("Cannot take length of type `{}`", sym_to_str(&sym).unwrap()), token);
+                }
 
-            if len && match sym { Symbol::Array(_) => false, _ => true } {
-                error(&format!("Cannot take length of type `{}`", sym_to_str(&sym).unwrap()), token);
-            }
-
-            if len { Symbol::Num } else { sym }
-        };
+                if len { Symbol::Num } else { sym }
+            };
 
         //println!("{:?} | {:?} <- {}", current_type, tok_type, token_str);
 
-        match (&current_type, &tok_type) {
-            (_, Any) => {}
-            (Any, _) => current_type = tok_type.clone(),
-            (Num, Num) => {}
-            (Bool, Bool) => {}
-            (Str, Str) => {}
-            (Str, Num) | (Str, Bool) | (Num, Str) | (Bool, Str) | (Num, Bool) | (Bool, Num) => {
-                error(
-                    &format!(
-                        "Illegal operation between types `{}` and `{}`",
-                        sym_to_str(&current_type).unwrap_or_default(),
-                        sym_to_str(&tok_type).unwrap_or_default()
-                    ),
-                    token,
-                );
+        //println!("{tok_type:?}");
+
+        if type_check {
+            match (&current_type, &tok_type) {
+                (_, Any) => {}
+                (Any, _) => current_type = tok_type.clone(),
+                (Num, Num) => {}
+                (Bool, Bool) => {}
+                (Str, Str) => {}
+                (Str, Num) | (Str, Bool) | (Num, Str) | (Bool, Str) | (Num, Bool) | (Bool, Num) => {
+                    error(
+                        &format!(
+                            "Illegal operation between types `{}` and `{}`",
+                            sym_to_str(&current_type).unwrap_or_default(),
+                            sym_to_str(&tok_type).unwrap_or_default()
+                        ),
+                        token,
+                    );
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
+    //println!("{}", exp);
 
+    let mut toks = split_array_accesses(&exp);
+    //copy.clear();
+    exp.clear();
+    for t in &mut toks {
+        //println!("{t:?}");
+        //let orig = t.0.clone();
+        if t.1 {
+            resolve_indexing_chain(&mut t.0, vars, scope, namespace, using, token);
+            //*exp = replace_isolated(&exp, &orig, &t.0);
+            exp.push_str(&t.0);
+
+            //if *exp != copy { println!("{exp:?} {copy:?} | {orig:?} {:?}", t.0) }
+
+            //println!("{} | {} <- {}", exp, orig, t.0);
+
+            //copy.push_str("‼nil");
+        }
+        else {
+            exp.push_str(&t.0);
+            //copy.push_str(&t.0);
+        }
+        //if exp.ends_with('#') { exp.pop(); }
+        //if copy.ends_with('#') { copy.pop(); }
+    }
+
+    *exp = replace_isolated(exp, "||", " or ");
+    *exp = replace_isolated(exp, "!", " not ");
     // 🔎 Detect boolean operators
     if exp.contains("==")
         || exp.contains("~=")
@@ -1243,26 +1619,23 @@ fn get_expr_type(
         || exp.contains("<")
         || exp.contains(">")
         || exp.contains("&&")
-        || exp.contains("||")
+        || exp.contains(" not ")
     {
-        *exp = exp.replace("&&", " and ");
-        *exp = exp.replace("||", " or ");
+        *exp = replace_isolated(exp, "&&", " and ");
         return Bool;
-    } else if exp.contains('+')
+    } /*else if exp.contains('+')
         || exp.contains('-')
         || exp.contains('*')
         || exp.contains('/')
         || exp.contains('%')
     {
         return Num;
-    } else if current_type != Any {
-        return current_type;
-    }
+    } */
 
-    Any
+    return current_type;
 }
 
-fn remove_function_args(input: &str) -> String {
+fn prefix_function_args(input: &str) -> String {
     let mut output = String::new();
     let mut chars = input.chars().peekable();
     let mut stack = Vec::new();
@@ -1273,8 +1646,9 @@ fn remove_function_args(input: &str) -> String {
             if let Some(prev) = output.chars().last() {
                 if prev.is_alphanumeric() || prev == ')' {
                     output.push('(');
+                    output.push('‼');
                     stack.push(')');
-                    // Skip until matching ')'
+
                     let mut nested = 0;
                     while let Some(&next_c) = chars.peek() {
                         chars.next();
@@ -1286,6 +1660,10 @@ fn remove_function_args(input: &str) -> String {
                             }
                             nested -= 1;
                         }
+                        output.push(next_c);
+                        if "(,+-*/%<>~=&|!".contains(next_c) {
+                            output.push('‼');
+                        }
                     }
                     output.push(')');
                     continue;
@@ -1296,6 +1674,8 @@ fn remove_function_args(input: &str) -> String {
             output.push(c);
         }
     }
+
+    //println!("{output}");
 
     output
 }
@@ -1313,116 +1693,78 @@ fn resolve_indexing_chain(
     let full_expr = expr.clone();
     let mut current_type = Any;
 
-    let mut processed_expr = String::new();
-    let mut remaining_expr = full_expr.as_str();
+    let mut current_expr = full_expr.clone();
 
-    while let Some((container_range, index_range, rest_range)) = split_index_once(remaining_expr) {
-        let mut container = remaining_expr[container_range.clone()].trim().to_string();
-        let mut index = remaining_expr[index_range.clone()].trim().to_string();
-        let rest = &remaining_expr[rest_range.clone()];
+    let mut output_expr = String::new();
 
-        // Type resolution for the container
-        let container_type = if current_type == Any {
-            let mut found = false;
+    loop {
+        if let Some((container_range, index_range, rest_range)) = split_index_once(&current_expr) {
+            let mut container = current_expr[container_range.clone()].trim().to_string();
+            let index = current_expr[index_range.clone()].trim().to_string();
+            let rest = &current_expr[rest_range];
 
-            for s in (0..=scope).rev() {
-                if let Some(scope_vars) = vars.get(&s) {
-                    if let Some((vtype, _)) = scope_vars.get(&format!("{}{}", namespace, &container)) {
-                        container = container.replace(&container, &format!("{}{}", namespace, &container));
-                        current_type = vtype.clone();
-                        found = true;
-                        break;
-                    }
+            //println!("{index:?}");
+
+            // Recursively fix indices inside the current index expression
+            let mut fixed_index = index.clone();
+            get_expr_type(&mut fixed_index, vars, scope, namespace, using, token);
+
+            // Now split by commas in case of multi-argument indexing and fix each individually
+            let indices = split_top_level_commas(&fixed_index);
+            let mut fixed_indices: Vec<String> = indices.into_iter().map(|idx| {
+                let idx_type = get_expr_type(&mut idx.clone(), vars, scope, namespace, using, token);
+                if idx_type == Num && !idx.contains("+001") && !idx.contains("+‼001") {
+                    format!("{}+001", idx)
+                } else {
+                    idx
                 }
+            }).collect();
+
+            for idx in &mut fixed_indices {
+                get_expr_type(idx, vars, scope, namespace, using, token);
             }
-            if !found {
-                for s in (0..=scope).rev() {
-                    if let Some(scope_vars) = vars.get(&s) {
-                        if let Some((vtype, _)) = scope_vars.get(&container) {
-                            current_type = vtype.clone();
-                            found = true;
-                            break;
-                        }
-                    }
+
+            let fixed_index_expr = fixed_indices.join(", ");
+
+            let container_type = get_expr_type(&mut container, vars, scope, namespace, using, token);
+
+            //println!("{container}");
+
+            match container_type {
+                Array(inner) => {
+                    current_type = *inner;
                 }
-            }
-            if !found {
-                for name in using {
-                    for s in (0..=scope).rev() {
-                        if let Some(scope_vars) = vars.get(&s) {
-                            if let Some((vtype, _)) = scope_vars.get(&format!("{}__{}", name, &container)) {
-                                container = container.replace(&container, &format!("{}__{}", name, &container));
-                                current_type = vtype.clone();
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
+                Any => {
+                    current_type = Any;
                 }
-            }
-
-            if !found {
-                error(&format!("Undeclared variable `{}`", container), token);
-            }
-            current_type.clone()
-        } else {
-            current_type.clone()
-        };
-
-        // Resolve the type of index (just for validation)
-        let index_ty = get_expr_type(&mut index, vars, scope, namespace, using, token);
-
-        //println!("{:?}", expr);
-
-        match container_type {
-            Array(inner) => {
-                if *inner != Any && index_ty != Num && index_ty != Any {
+                other => {
                     error(
-                        &format!(
-                            "Invalid index type: expected `Num`, got `{}`",
-                            sym_to_str(&index_ty).unwrap_or_default()
-                        ),
+                        &format!("Cannot index into non-array type `{}`", sym_to_str(&other).unwrap_or_default()),
                         token,
                     );
+                    current_type = Any;
                 }
-
-                // Add +1 unless it’s already handled
-                if !index.contains("+001") {
-                    index = format!("{}+001", index);
-                }
-
-                current_type = *inner;
             }
-            Any => return Any,
-            other => {
-                error(
-                    &format!(
-                        "Cannot index into non-array type `{}`",
-                        sym_to_str(&other).unwrap_or_default()
-                    ),
-                    token,
-                );
-                return Any;
-            }
-        }
 
-        // Build up the new expression
-        if processed_expr.is_empty() {
-            processed_expr = format!("{}[{}]", container, index);
+            if output_expr.is_empty() {
+                output_expr = format!("{}[{}]", container, fixed_index_expr);
+            } else {
+                output_expr = format!("{}[{}]", output_expr, fixed_index_expr);
+            }
+
+            current_expr = rest.to_string();
         } else {
-            processed_expr = format!("{}[{}]", processed_expr, index);
+            break;
         }
-
-        // Slice into the remaining part of the expr
-        remaining_expr = rest;
     }
 
-    // If no indexing was detected at all, return original type
-    if processed_expr.is_empty() {
+    if output_expr.is_empty() {
         return current_type;
     }
 
-    *expr = processed_expr;
+    //println!("{expr} {output_expr}");
+
+    *expr = output_expr;
     current_type
 }
 
@@ -1489,6 +1831,134 @@ fn split_top_level_commas(s: &str) -> Vec<String> {
     result
 }
 
+// At this point, GPT just doing magic here.
+fn split_array_accesses(input: &str) -> Vec<(String, bool)> {
+    let chars: Vec<char> = input.chars().collect();
+    let mut result = Vec::new();
+    let mut i = 0;
+    let mut last = 0;
+
+    fn extract_array_access(chars: &[char], start: usize) -> Option<usize> {
+        let mut i = start;
+        // identifier
+        if chars[i].is_alphabetic() || chars[i] == '_' {
+            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == ':') {
+                i += 1;
+            }
+
+            // optional function call
+            if i < chars.len() && chars[i] == '(' {
+                let mut depth = 1;
+                i += 1;
+                while i < chars.len() && depth > 0 {
+                    if chars[i] == '(' {
+                        depth += 1;
+                    } else if chars[i] == ')' {
+                        depth -= 1;
+                    }
+                    i += 1;
+                }
+            }
+
+            // array access
+            let mut j = i;
+            let mut found_bracket = false;
+            while j < chars.len() && chars[j] == '[' {
+                found_bracket = true;
+                let mut depth = 1;
+                j += 1;
+                while j < chars.len() && depth > 0 {
+                    if chars[j] == '[' {
+                        depth += 1;
+                    } else if chars[j] == ']' {
+                        depth -= 1;
+                    }
+                    j += 1;
+                }
+            }
+
+            if found_bracket {
+                return Some(j);
+            }
+        }
+
+        None
+    }
+
+    while i < chars.len() {
+        // Start of identifier
+        if chars[i].is_alphabetic() || chars[i] == '_' {
+            let start = i;
+            // Parse identifier or namespaced path
+            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == ':') {
+                i += 1;
+            }
+
+            // Optional function call
+            if i < chars.len() && chars[i] == '(' {
+                //let func_start = start;
+                let mut depth = 1;
+                i += 1;
+                //let arg_start = i;
+                while i < chars.len() && depth > 0 {
+                    // Recursively extract any array accesses inside function args
+                    if let Some(j) = extract_array_access(&chars, i) {
+                        if i > last {
+                            result.push((chars[last..i].iter().collect(), false));
+                        }
+                        result.push((chars[i..j].iter().collect(), true));
+                        i = j;
+                        last = j;
+                        continue;
+                    }
+
+                    if chars[i] == '(' {
+                        depth += 1;
+                    } else if chars[i] == ')' {
+                        depth -= 1;
+                    }
+                    i += 1;
+                }
+            }
+
+            // Check for bracket access after identifier or function call
+            let mut j = i;
+            let mut bracketed = false;
+            while j < chars.len() && chars[j] == '[' {
+                bracketed = true;
+                let mut depth = 1;
+                j += 1;
+                while j < chars.len() && depth > 0 {
+                    if chars[j] == '[' {
+                        depth += 1;
+                    } else if chars[j] == ']' {
+                        depth -= 1;
+                    }
+                    j += 1;
+                }
+            }
+
+            if bracketed {
+                if start > last {
+                    result.push((chars[last..start].iter().collect(), false));
+                }
+                result.push((chars[start..j].iter().collect(), true));
+                last = j;
+                i = j;
+                continue;
+            }
+        }
+
+        i += 1;
+    }
+
+    if last < chars.len() {
+        result.push((chars[last..].iter().collect(), false));
+    }
+
+    result
+}
+
 
 fn preprocess(code: String) -> String {
     let mut fin = String::new();
@@ -1508,10 +1978,11 @@ fn preprocess(code: String) -> String {
         if c == '\n' { comment = false }
         if comment { continue }
         fin.push(c); if !c.is_whitespace() { token.push(c) }
-        if token.ends_with("lua") { lua = true }
+        if token.ends_with("lua") { lua = true } // FIXME, strings fucked.
 
         if lua { if c == '{' { b += 1 } else if c == '}' { b -= 1 } }
         if b == 1 && lua { set = true }
+        if lua && !set && !c.is_whitespace() { lua = false }
         if set && b == 0 { lua = false; set = false }
 
         if prelast == '-' && last == '-' && c != '[' && lua { comment = true; fin.pop(); fin.pop(); fin.pop(); }
@@ -1560,7 +2031,7 @@ fn tokenize(filename: String) -> Option<Vec<Token>> {
             }
         }
 
-        if !token.is_empty() && **code.peek_nth(0).unwrap() == ' ' && **code.peek_nth(1).unwrap() == 'i' && **code.peek_nth(2).unwrap() == 'n' {
+        if !token.is_empty() && **code.peek_nth(0).unwrap() == ' ' && **code.peek_nth(1).unwrap() == 'i' && **code.peek_nth(2).unwrap() == 'n' && **code.peek_nth(3).unwrap() == ' ' {
             tokens.push(Token::new(Symbol::Custom(token.clone()), filename.clone(), line_number)); 
             token.clear(); 
             continue;
