@@ -1,5 +1,8 @@
 
 include term;
-include colors;
+include color;
 include os;
 include math;
+include fs;
+include sys;
+include coroutine;

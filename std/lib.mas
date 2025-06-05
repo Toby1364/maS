@@ -1,13 +1,14 @@
 
+let mut EVENT: Table = [];
+
 namespace std {
     include wrappers;
     
-    include types;
+    include type;
     include string;
-
+    include array;
     include io;
-    include thread;
     
+    using std::type;
     using std::io;
-    using std::string;
 }

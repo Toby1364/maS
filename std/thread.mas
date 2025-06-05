@@ -3,38 +3,47 @@ namespace thread {
     let mut ___thread_internal_threads: Table = [];
     let mut ___thread_internal_thread_names: Array<Str> = [];
     let mut ___thread_internal_next_id: Num = 1;
+    let mut ___thread_internal_current_id: Num;
 
     lua {
-        function _G.std__thread_____thread_internal_step()
+        function _G.std__thread_____thread_internal_step(event)
             for id, co in _G.pairs(std__thread_____thread_internal_threads) do
                 if coroutine.status(co) ~= "dead" then
-                    local ok, result = coroutine.resume(co, coroutine.yield())
+                    std__thread_____thread_internal_current_id = id
+                    local ok, result = coroutine.resume(co, table.unpack(event))
                     if not ok then
-                        local sid = std__thread_____thread_internal_thread_names[id] or id;
-                        std__io__log("error", "Thread [" .. id .. "] crashed with error:", result:sub(16))
+                        local sid = std__thread_____thread_internal_thread_names[id] or id
+                        std__io__log("error", "Thread [" .. sid .. "] crashed with error: "..result:sub(15))
                         std__thread_____thread_internal_threads[id] = nil
+                        std__thread_____thread_internal_thread_names[id] = nil
                     end
                 end
             end
         end 
     }
 
-    func spawn(f: Any, name: Str) -> Num {
+    func id() -> Num {
+        return ___thread_internal_current_id;
+    }
+
+    func spawn(f: Any, name_: Str) -> Num {
         let id: Num = ___thread_internal_next_id;
         ___thread_internal_next_id += 1;
 
-        ___thread_internal_thread_names[id-1] = name;
+        ___thread_internal_thread_names[id-1] = name_;
 
-        let sid: Str = std__thread_____thread_internal_thread_names[id] || id;
-        std::io::log("info", "Thread ");
+        let sid: Str = name_ || std::type::Str(id);
+        std::io::log("info", "Thread ["..sid.."] started");
 
         lua { std__thread_____thread_internal_threads[std__thread__id] = coroutine.create(function() std__thread__f() end) }
         return id;
     }
 
     func kill(t: Num) {
-        ___thread_internal_threads[t-1] = nil
-        ___thread_internal_thread_names[t-1] = nil
+        let sid: Str = ___thread_internal_thread_names[t-1] || std::type::Str(t-1);
+        std::io::log("info", "Thread ["..sid.."] terminated");
+        ___thread_internal_threads[t-1] = nil;
+        ___thread_internal_thread_names[t-1] = nil;
     }
 
     func alive(t: Num) {
@@ -42,8 +51,8 @@ namespace thread {
         lua { return std__thread__co ~= nil and coroutine.status(std__thread__co) ~= "dead" }
     }
 
-    func name(t: Num) {
-        return ___thread_internal_thread_names[t];
+    func name(t: Num) -> Str {
+        return ___thread_internal_thread_names[t-1] || std::type::Str(t);
     }
 
     func yield() {
@@ -59,12 +68,16 @@ namespace thread {
 
     lua {
         ___internal_application_launcher = function()
-            std__thread__spawn(function() while 1 do coroutine.yield() end end, "Yielder")
             local main_id = std__thread__spawn(_G.main, "Main")
-            local runner = coroutine.create(function() while true do std__thread_____thread_internal_step() end end)
+
+            for i=0, 20 do os.startTimer(0.1*i) end
 
             while std__thread__alive(main_id) do
-                coroutine.resume(runner)
+                for _=0, 5 do
+                    std__thread_____thread_internal_step({})
+                end
+
+                std__thread_____thread_internal_step({os.pullEventRaw()})
             end
         end
     }

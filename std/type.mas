@@ -1,0 +1,26 @@
+
+namespace type {
+    func typeof(x: Any) -> Str {
+        let mut type: Str;
+        lua { std__type__type = \type(std__type__x) }
+
+        if type == "number"      { type = "num" }
+        else if type == "string" { type = "str" }
+        return type;
+    }
+
+    func Str(x: Any) -> Str {
+        lua { return \tostring(std__type__x) }
+    }
+
+    func Num(x: Any, base: Num) -> Num { // Base optional
+        lua { return \tonumber(std__type__x, std__type__base) }
+    }
+
+    func Bool(x: Any) -> Bool {
+        if      typeof(x) == "bool"  { return x }
+        else if typeof(x) == "num"   { return x != 0 }
+        else if typeof(x) == "str"   { return x == "true" }
+        else                         { return nil }
+    }
+}

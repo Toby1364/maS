@@ -1,0 +1,14 @@
+
+namespace sys {
+    func yield() {
+        lua { coroutine.yield() }
+    }
+
+    func pcall(f: Any) {
+        lua { return {_G.pcall(std__sys__f)} }
+    }
+
+    func loadfile(path: Str, option: Str, env: Table) -> Table {
+        lua { return {loadfile(std__sys__path, std__sys__option, std__sys__env)} }
+    }
+}

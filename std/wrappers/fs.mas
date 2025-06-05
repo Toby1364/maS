@@ -1,0 +1,94 @@
+
+namespace fs {
+    func exists(path: Str) -> Bool {
+        lua { return fs.exists(std__fs__path) }
+    }
+
+    func is_dir(path: Str) -> Bool {
+        lua { return fs.isDir(std__fs__path) }
+    }
+
+    func is_read_only(path: Str) -> Bool {
+        lua { return fs.isReadOnly(std__fs__path) }
+    }
+
+    func get_name(path: Str) -> Str {
+        lua { return fs.getName(std__fs__path) }
+    }
+
+    func get_drive(path: Str) -> Str {
+        lua { return fs.getDrive(std__fs__path) }
+    }
+
+    func get_size(path: Str) -> Num {
+        lua { return fs.getSize(std__fs__path) }
+    }
+
+    func get_free_space(path: Str) -> Num {
+        lua { return fs.getFreeSpace(std__fs__path) }
+    }
+
+    func list(path: Str) -> Table {
+        lua { return fs.list(std__fs__path) }
+    }
+
+    func combine(path1: Str, path2: Str) -> Str {
+        lua { return fs.combine(std__fs__path1, std__fs__path2) }
+    }
+
+    func make_dir(path: Str) {
+        lua { fs.makeDir(std__fs__path) }
+    }
+
+    func move(from: Str, to: Str) {
+        lua { fs.move(std__fs__from, std__fs__to) }
+    }
+
+    func copy(from: Str, to: Str) {
+        lua { fs.copy(std__fs__from, std__fs__to) }
+    }
+
+    func delete(path: Str) {
+        lua { fs.delete(std__fs__path) }
+    }
+
+    func open(path: Str, mode: Str) -> Any {
+        lua { return fs.open(std__fs__path, std__fs__mode) }
+    }
+
+    func complete(path: Str, location: Str) -> Table {
+        lua { return fs.complete(std__fs__path, std__fs__location) }
+    }
+
+    func find(pattern: Str) -> Table {
+        lua { return fs.find(std__fs__pattern) }
+    }
+
+    func get_dir(path: Str) -> Str {
+        lua { return fs.getDir(std__fs__path) }
+    }
+
+    func get_mount(path: Str) -> Any {
+        lua { return fs.getMount(std__fs__path) }
+    }
+
+    func attributes(path: Str) -> Table {
+        lua { return fs.attributes(std__fs__path) }
+    }
+
+    func is_drive_root(path: Str) -> Bool {
+        lua { return fs.isDriveRoot(std__fs__path) }
+    }
+
+    func get_capacity(path: Str) -> Num {
+        lua { return fs.getCapacity(std__fs__path) }
+    }
+
+    func get_label(path: Str) -> Str {
+        lua { return fs.getLabel(std__fs__path) }
+    }
+
+    func set_label(path: Str, label: Str) {
+        lua { fs.setLabel(std__fs__path, std__fs__label) }
+    }
+}

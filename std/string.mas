@@ -16,6 +16,10 @@ namespace string {
         lua { return string.lower(std__string__s) }
     }
 
+    func scap(s: Str) -> Str {
+        return upper(sub(s, 0, 0))..sub(s, 1);
+    }
+
     func reverse(s: Str) -> Str {
         lua { return string.reverse(std__string__s) }
     }
@@ -53,11 +57,11 @@ namespace string {
     }
 
     func starts_with(s: Str, prefix: Str) -> Bool {
-        return sub(s, 1, len(prefix)) == prefix
+        return sub(s, 0, len(prefix)-1) == prefix;
     }
 
     func ends_with(s: Str, suffix: Str) -> Bool {
-        return sub(s, -len(suffix)) == suffix
+        return sub(s, -len(suffix)+1) == suffix;
     }
 
     func split(s: Str, delim: Str) -> Array<Str> {

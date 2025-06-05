@@ -1,0 +1,18 @@
+
+namespace co {
+    func create(f: Any) -> Any {
+        lua { return coroutine.create(std__co__f) }
+    }
+
+    func resume(c: Any, args: Table) -> Table {
+        lua { return {coroutine.resume(std__co__c, std__co__args)} } // args?
+    }
+
+    func status(c: Any) -> Str {
+        lua { return coroutine.status(std__co__c) }
+    }
+
+    func yield() {
+        lua { coroutine.yield() }
+    }
+}

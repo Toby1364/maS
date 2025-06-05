@@ -13,4 +13,81 @@ namespace io {
             std::io::println(msg);
         }
     }
+
+    func panic(s: Any) {
+        lua { _G.error(std__io__s) }
+    }
+}
+
+namespace key {
+    func get_name(key: Num) -> Str {
+        lua { return keys.getName(std__key__key) }
+    }
+
+    func is_down(key: Str) -> Bool {
+        if EVENT[0] == "key" && get_name(EVENT[1]) == key { return true }
+        else { return false } 
+    }
+
+    func is_pressed(key: Str) -> Bool {
+        if EVENT[0] == "key" && get_name(EVENT[1]) == key && !EVENT[2] { return true }
+        else { return false } 
+    }
+
+    func get_char() -> Str {
+        if EVENT[0] == "char" { return EVENT[1] }
+        else { return nil }
+    }
+
+    let mut state_tab: Table = [];
+    func update() {
+        if      EVENT[0] == "key"    { state_tab[get_name(EVENT[1])] = true }
+        else if EVENT[0] == "key_up" { state_tab[get_name(EVENT[1])] = false }
+    }
+
+    func state(key: Str) -> Bool {
+        return state_tab[key] || false;
+    }
+}
+
+namespace mouse {
+    func click() -> Table {
+        if EVENT[0] == "mouse_click" {
+            EVENT[1] -= 1;
+            EVENT[2] -= 1;
+            EVENT[3] -= 1;
+            return EVENT;
+        }
+        else { return nil }
+    }
+
+    func drag() -> Table {
+        if EVENT[0] == "mouse_drag" || EVENT[0] == "mouse_click" {
+            EVENT[1] -= 1;
+            EVENT[2] -= 1;
+            EVENT[3] -= 1;
+            return EVENT;
+        }
+        else { return nil }
+    }
+
+    func scroll() -> Table {
+        if EVENT[0] == "mouse_scroll" {
+            EVENT[1] -= 1;
+            EVENT[2] -= 1;
+            EVENT[3] -= 1;
+            return EVENT;
+        }
+        else { return nil }
+    }
+
+    func up() -> Table {
+        if EVENT[0] == "mouse_up" {
+            EVENT[1] -= 1;
+            EVENT[2] -= 1;
+            EVENT[3] -= 1;
+            return EVENT;
+        }
+        else { return nil }
+    }
 }
