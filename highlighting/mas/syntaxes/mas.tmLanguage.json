@@ -65,7 +65,7 @@
 				},
 				{
 					"name": "keyword.operator.mas",
-					"match": "[=+\\-*/%!\\.#§:|&](?![/*])"
+					"match": "[=+\\-*/%!\\.#§:|&^](?![/*])"
 				},
 				{
 					"name": "keyword.operator.mas",
@@ -84,8 +84,16 @@
 					"match": "(?<![\\w])(0x)?(?:\\d+\\.\\d+|\\d+\\.^\\.|\\.\\d+|\\d+)(?![\\w])"
 				},
 				{
+					"name": "constant.numeric.mas",
+					"match": "\\b0x[\\d\\w]+\\b"
+				},
+				{
 					"name": "constant.language.mas",
 					"match": "\\b(true|false|nil)\\b"
+				},
+				{
+					"name": "invalid.illegal",
+					"match": "([\\w\\d]*[^;{}<>=+\\-*/%!|&^]+\\n)(?![\\n\\t\\s]*})"
 				}
 			]
 		},
